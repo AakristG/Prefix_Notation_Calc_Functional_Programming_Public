@@ -2,10 +2,14 @@
 
 ;; Pick your mode
 
-(define interactive? ; define a variable named interactive. Method interactive will be true unless batch flags are found
-  (not (ormap (λ (a) (or (string=? a "-b") ; ormap checks if any element of list satisfies the condition and lambda create function taking argument a
-                         (string=? a "--batch")))
-              (vector->list (current-command-line-arguments))))) ; convert vector to list and get the arguments passed
+(define interactive?
+  (let [(args (current-command-line-arguments))]
+    (cond
+      [(= (vector-length args) 0) #t]                ; no args → interactive
+      [(string=? (vector-ref args 0) "-b") #f]      ; batch mode
+      [(string=? (vector-ref args 0) "--batch") #f] ; batch mode
+      [else #t])) )                                 
+
 ;; Error checking
 (define (error-result)
   (error "Invalid Expression"))
@@ -55,27 +59,28 @@
 
       [(char=? (first cs) #\+) ; check for addition
       (let* ([r1 (prefix-eval (rest cs) history)] ; check first operand
-             [r2 (prefix-eval (second r1) history)]) ; check second operand
+             [r2 (prefix-eval (skip-ws (second r1)) history)]) ; check second operand
          (list (+ (first r1) (first r2)) ; add the values together 
                (second r2)))]
 
       [(char=? (first cs) #\*) ; check for multiplication
       (let* ([r1 (prefix-eval (rest cs) history)] ; check first and second operand
-             [r2 (prefix-eval (second r1) history)]) ; 
+             [r2 (prefix-eval (skip-ws (second r1)) history)]) ; 
          (list (* (first r1) (first r2)) ; add the values together 
                (second r2)))]
 
       [(char=? (first cs) #\-) ; check for subtraction
-      (let* ([r1 (prefix-eval (rest cs) history)] ; check first and second operand
-             [r2 (prefix-eval (second r1) history)]) ; 
-         (list (/ (first r1) (first r2)) ; add the values together 
-               (second r2)))]
+       (let* ([r1 (prefix-eval (rest cs) history)]
+              [r2 (prefix-eval (skip-ws (second r1)) history)])
+         (list (- (first r1) (first r2)) (second r2)))]
 
       [(char=? (first cs) #\/) ; check for divison
       (let* ([r1 (prefix-eval (rest cs) history)] ; check for the operands
-             [r2 (prefix-eval (second r1) history)])
-         (list (- (first r1) (first r2)) ; add the values together 
-               (second r2)))]
+             [r2 (prefix-eval (skip-ws (second r1)) history)])
+        (if (zero? (first r2))
+            (error-result)
+            (list (quotient (first r1) (first r2)) ; add the values together 
+                  (second r2))))]
 
       [(char=? (first cs) #\$)      ; check if token begins with '$'
        (parse-history (rest cs) history)] ; parse and retrieve history value
@@ -89,17 +94,16 @@
 
 ;; Main method
 (define (main history)
-  (when interactive? (display "> ")) ; when in interactive mode display prompt
   (let loop ()
+    (when interactive? (display "> ")) ; when in interactive mode display prompt
     (let ([line (read-line (current-input-port))]) ; current-input-port allows it to only be read from terminal
       (cond
         [(eof-object? line) (void)] ; quit program if end of file
         [(string=? line "quit") (void)] ; quit program if user types quit
-        [(string=? line "") (loop)]
         [else
-         (with-handlers ([exn:fail? (λ (_) ; catch exception
+         (with-handlers ([exn:fail? (λ (_)
                                       (displayln "Error: expression is invalid")
-                                      (loop))])
+                                      (main history))])
            (let* ([chars (string->list line)] ; convert input string to character list
                   [res (prefix-eval chars history)]
                   [remaining (skip-ws (second res))]) ; remove whitespace
@@ -114,6 +118,6 @@
                    (display id)
                    (display ": ")
                    (displayln (real->double-flonum val)) ; print result as float
-                   (main new-history)))))]))) ; 
+                   (main new-history)))))])))) ; 
 
       
